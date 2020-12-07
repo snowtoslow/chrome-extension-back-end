@@ -7,8 +7,8 @@ import (
 	userusecase "chrome-extension-back-end/user/usecase"
 	"context"
 	"fmt"
-	"github.com/itsjamie/gin-cors"
 	"github.com/gin-gonic/gin"
+	"github.com/itsjamie/gin-cors"
 	"github.com/spf13/viper"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
@@ -51,16 +51,15 @@ func (a *App) Run(port string) error {
 
 	// Apply the middleware to the router (works with groups too)
 	router.Use(cors.Middleware(cors.Config{
-		Origins:        "*",
-		Methods:        "GET, PUT, POST, DELETE",
-		RequestHeaders: "Origin, Authorization, Content-Type",
-		ExposedHeaders: "",
-		MaxAge: 50 * time.Second,
-		Credentials: true,
+		Origins:         "*",
+		Methods:         "GET, PUT, POST, DELETE",
+		RequestHeaders:  "Origin, Authorization, Content-Type", //		RequestHeaders: "Origin, Authorization, Content-Type",
+		ExposedHeaders:  "",
+		MaxAge:          50 * time.Second,
+		Credentials:     true,
 		ValidateHeaders: false,
-	}),gin.Recovery(),
+	}), gin.Recovery(),
 		gin.Logger())
-
 
 	ushttp.RegisterHTTPEndpoints(api, a.userUc)
 
