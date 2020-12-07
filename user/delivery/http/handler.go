@@ -8,12 +8,6 @@ import (
 	"net/http"
 )
 
-type Bookmark struct {
-	Id           string   `json:"id"`
-	Email        string   `json:"url"`
-	Password     string   `json:"title"`
-	PersonalData []string `json:"personal_data"`
-}
 
 type Handler struct {
 	useCase user.UseCase
@@ -40,16 +34,6 @@ func (h Handler) CreateUser(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"id": createdUser.Id})
 }
 
-/*func(h Handler)GetUserById(c *gin.Context){
-
-	foundUser, err := h.useCase.GetUserById(c.Request.Context(),id)
-	if err!=nil{
-		c.JSON(http.StatusBadRequest, gin.H{"status": "failed", "message": user.InvalidIdError})
-		return
-	}
-	c.JSON(http.StatusOK, gin.H{"status": "success", "user": &foundUser})
-
-}*/
 
 func (h Handler) GetUserById(c *gin.Context) {
 	id := c.Params.ByName("id")
