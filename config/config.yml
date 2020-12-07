@@ -1,0 +1,6 @@
+port: 8081
+
+mongo:
+  uri: "mongodb://localhost:27017"
+  name: "extensiondb"
+  user_collection: "users"
