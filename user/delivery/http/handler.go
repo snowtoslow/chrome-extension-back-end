@@ -8,7 +8,6 @@ import (
 	"net/http"
 )
 
-
 type Handler struct {
 	useCase user.UseCase
 }
@@ -34,11 +33,11 @@ func (h Handler) CreateUser(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"id": createdUser.Id})
 }
 
-
 func (h Handler) GetUserById(c *gin.Context) {
 	id := c.Params.ByName("id")
 	foundUser, err := h.useCase.GetUserById(c.Request.Context(), id)
 	if err != nil {
+		log.Println("ERR!", err)
 		c.JSON(http.StatusBadRequest, gin.H{"status": "failed", "message": user.InvalidIdError})
 		return
 	}

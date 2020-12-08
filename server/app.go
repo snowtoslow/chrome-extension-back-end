@@ -6,12 +6,10 @@ import (
 	userrepo "chrome-extension-back-end/user/repository/mongo"
 	userusecase "chrome-extension-back-end/user/usecase"
 	"context"
-	"encoding/base64"
 	"fmt"
 	"github.com/gin-gonic/gin"
 	"github.com/itsjamie/gin-cors"
 	"github.com/spf13/viper"
-	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 	"log"
@@ -28,17 +26,14 @@ type App struct {
 
 func NewApp() *App {
 
-	//dbWithData := initDB()
-
-	dbWithKeys, err := initKeyDb()
+	dbWithData, err := initClient()
 	if err != nil {
-		log.Println("ERROR")
+		log.Println(err)
 	}
 
-	fmt.Println("DATABASE SUCESSFULY CONECTED!", dbWithKeys)
-	//fmt.Println("DATABASE FOR KEYS SUCESSFULY CONECTED!", dbWithKeys)
+	fmt.Println("DATABASE SUCESSFULY CONECTED!", dbWithData)
 
-	benchRepo := userrepo.NewUserRepository(dbWithKeys, viper.GetString("mongo.user_collection"))
+	benchRepo := userrepo.NewUserRepository(dbWithData)
 
 	return &App{
 		userUc: userusecase.NewUserUseCase(benchRepo),
@@ -95,6 +90,25 @@ func (a *App) Run(port string) error {
 
 }
 
+func initClient() (*mongo.Client, error) {
+	client, err := mongo.NewClient(options.Client().ApplyURI(viper.GetString("mongo.uri")))
+	if err != nil {
+		log.Fatalf("Error occured while establishing connection to mongoDB")
+		return nil, err
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	err = client.Connect(ctx)
+	if err != nil {
+		log.Fatal(err)
+		return nil, err
+	}
+
+	return client, nil
+}
+
 func initDB() *mongo.Database {
 	client, err := mongo.NewClient(options.Client().ApplyURI(viper.GetString("mongo.uri")))
 	if err != nil {
@@ -115,69 +129,4 @@ func initDB() *mongo.Database {
 	}
 
 	return client.Database(viper.GetString("mongo.name"))
-}
-
-func initKeyDb() (*mongo.Database, error) {
-	decodeKey, err := base64.StdEncoding.DecodeString(viper.GetString("mongo-secured-keys.local_master_key"))
-
-	kmsProviders := map[string]map[string]interface{}{
-		"local": {
-			"key": decodeKey,
-		},
-	}
-
-	// The MongoDB namespace (db.collection) used to store the encryption data keys.
-
-	keyVaultNamespace := viper.GetString("mongo.name") + "." + viper.GetString("mongo-secured-keys.key_vault_collection_name")
-
-	// The Client used to read/write application data.
-	client, err := mongo.Connect(context.TODO(), options.Client().ApplyURI(viper.GetString("mongo.uri")))
-	if err != nil {
-		panic(err)
-	}
-	//defer func() { _ = client.Disconnect(context.TODO()) }()
-
-	/*	// Get a handle to the application collection and clear existing data.
-		coll := client.Database("test").Collection("coll")
-		_ = coll.Drop(context.TODO())
-	*/
-	// Set up the key vault for this example.
-	keyVaultColl := client.Database(viper.GetString("mongo.name")).Collection(viper.GetString("mongo-secured-keys.key_vault_collection_name"))
-	_ = keyVaultColl.Drop(context.TODO())
-	// Ensure that two data keys cannot share the same keyAltName.
-	keyVaultIndex := mongo.IndexModel{
-		Keys: bson.D{{"keyAltNames", 1}},
-		Options: options.Index().
-			SetUnique(true).
-			SetPartialFilterExpression(bson.D{
-				{"keyAltNames", bson.D{
-					{"$exists", true},
-				}},
-			}),
-	}
-	if _, err = keyVaultColl.Indexes().CreateOne(context.TODO(), keyVaultIndex); err != nil {
-		return nil, err
-	}
-
-	// Create the ClientEncryption object to use for explicit encryption/decryption. The Client passed to
-	// NewClientEncryption is used to read/write to the key vault. This can be the same Client used by the main
-	// application.
-	clientEncryptionOpts := options.ClientEncryption().
-		SetKmsProviders(kmsProviders).
-		SetKeyVaultNamespace(keyVaultNamespace)
-	clientEncryption, err := mongo.NewClientEncryption(client, clientEncryptionOpts)
-	if err != nil {
-		return nil, err
-	}
-	//defer func() { _ = clientEncryption.Close(context.TODO()) }()
-
-	// Create a new data key for the encrypted field.
-	dataKeyOpts := options.DataKey().SetKeyAltNames([]string{"go_encryption_example"})
-	_, err = clientEncryption.CreateDataKey(context.TODO(), "local", dataKeyOpts)
-	if err != nil {
-		return nil, err
-	}
-	//dataKeyId
-
-	return client.Database(viper.GetString("mongo.name")), nil
 }
