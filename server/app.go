@@ -6,10 +6,12 @@ import (
 	userrepo "chrome-extension-back-end/user/repository/mongo"
 	userusecase "chrome-extension-back-end/user/usecase"
 	"context"
+	"encoding/base64"
 	"fmt"
 	"github.com/gin-gonic/gin"
 	"github.com/itsjamie/gin-cors"
 	"github.com/spf13/viper"
+	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 	"log"
@@ -26,7 +28,10 @@ type App struct {
 
 func NewApp() *App {
 
-	db := initDB()
+	db, err := initDB()
+	if err != nil {
+		log.Println(err)
+	}
 
 	fmt.Println("DATABASE SUCESSFULY CONECTED!", db)
 
@@ -89,24 +94,83 @@ func (a *App) Run(port string) error {
 
 }
 
-func initDB() *mongo.Database {
-	client, err := mongo.NewClient(options.Client().ApplyURI(viper.GetString("mongo.uri")))
+func initDB() (*mongo.Database, error) {
+
+	decodeKey, err := base64.StdEncoding.DecodeString(viper.GetString("mongo.local_master_key"))
 	if err != nil {
-		log.Fatalf("Error occured while establishing connection to mongoDB")
+		return nil, err
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	err = client.Connect(ctx)
-	if err != nil {
-		log.Fatal(err)
+	kmsProviders := map[string]map[string]interface{}{
+		"local": {
+			"key": decodeKey,
+		},
 	}
 
-	err = client.Ping(context.Background(), nil)
+	keyVaultDBName, keyVaultCollName := "encryption", "testKeyVault"
+	keyVaultNamespace := keyVaultDBName + "." + keyVaultCollName
+
+	client, err := mongo.Connect(context.TODO(), options.Client().ApplyURI(viper.GetString("mongo.uri")))
 	if err != nil {
-		log.Fatal(err)
+		return nil, err
+	}
+	defer func() { _ = client.Disconnect(context.TODO()) }()
+
+	coll := client.Database(viper.GetString("mongo.name")).Collection(viper.GetString("mongo.user_collection"))
+	_ = coll.Drop(context.TODO())
+
+	keyVaultColl := client.Database(keyVaultDBName).Collection(keyVaultCollName)
+	_ = keyVaultColl.Drop(context.TODO())
+
+	keyVaultIndex := mongo.IndexModel{
+		Keys: bson.D{{"keyAltNames", 1}},
+		Options: options.Index().
+			SetUnique(true).
+			SetPartialFilterExpression(bson.D{
+				{"keyAltNames", bson.D{
+					{"$exists", true},
+				}},
+			}),
 	}
 
-	return client.Database(viper.GetString("mongo.name"))
+	if _, err = keyVaultColl.Indexes().CreateOne(context.TODO(), keyVaultIndex); err != nil {
+		return nil, err
+	}
+	clientEncryptionOpts := options.ClientEncryption().
+		SetKmsProviders(kmsProviders).
+		SetKeyVaultNamespace(keyVaultNamespace)
+
+	clientEncryption, err := mongo.NewClientEncryption(client, clientEncryptionOpts)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = clientEncryption.Close(context.TODO()) }()
+
+	dataKeyOpts := options.DataKey().SetKeyAltNames([]string{"go_encryption_example"})
+	_, err = clientEncryption.CreateDataKey(context.TODO(), "local", dataKeyOpts) //datakeyId
+	if err != nil {
+		return nil, err
+	}
+
+	return client.Database(viper.GetString("mongo.name")), nil
 }
+
+//previous db config;
+/*client, err := mongo.NewClient(options.Client().ApplyURI(viper.GetString("mongo.uri")))
+if err != nil {
+	log.Fatalf("Error occured while establishing connection to mongoDB")
+}
+
+ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+defer cancel()
+
+err = client.Connect(ctx)
+if err != nil {
+	log.Fatal(err)
+}
+
+err = client.Ping(context.Background(), nil)
+if err != nil {
+	log.Fatal(err)
+}
+*/
