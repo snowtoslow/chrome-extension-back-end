@@ -28,16 +28,17 @@ type App struct {
 
 func NewApp() *App {
 
-	dbWithData := initDB()
+	//dbWithData := initDB()
 
 	dbWithKeys, err := initKeyDb()
 	if err != nil {
 		log.Println("ERROR")
 	}
 
-	fmt.Println("DATABASE SUCESSFULY CONECTED!", dbWithData)
+	fmt.Println("DATABASE SUCESSFULY CONECTED!", dbWithKeys)
+	//fmt.Println("DATABASE FOR KEYS SUCESSFULY CONECTED!", dbWithKeys)
 
-	benchRepo := userrepo.NewUserRepository(dbWithData, viper.GetString("mongo.user_collection"), dbWithKeys, viper.GetString("mongo-secured-keys.testKeyVault"))
+	benchRepo := userrepo.NewUserRepository(dbWithKeys, viper.GetString("mongo.user_collection"))
 
 	return &App{
 		userUc: userusecase.NewUserUseCase(benchRepo),
@@ -51,12 +52,10 @@ func (a *App) Run(port string) error {
 		gin.Logger(),
 	)*/
 
-	// Initialize a new Gin router
 	router := gin.New()
 
 	api := router.Group("/api")
 
-	// Apply the middleware to the router (works with groups too)
 	router.Use(cors.Middleware(cors.Config{
 		Origins:         "*",
 		Methods:         "GET, PUT, POST, DELETE",
@@ -129,21 +128,21 @@ func initKeyDb() (*mongo.Database, error) {
 
 	// The MongoDB namespace (db.collection) used to store the encryption data keys.
 
-	keyVaultNamespace := viper.GetString("mongo-secured-keys.key_vault_db_name") + "." + viper.GetString("mongo-secured-keys.key_vault_collection_name")
+	keyVaultNamespace := viper.GetString("mongo.name") + "." + viper.GetString("mongo-secured-keys.key_vault_collection_name")
 
 	// The Client used to read/write application data.
-	client, err := mongo.Connect(context.TODO(), options.Client().ApplyURI("mongodb://localhost:27017"))
+	client, err := mongo.Connect(context.TODO(), options.Client().ApplyURI(viper.GetString("mongo.uri")))
 	if err != nil {
 		panic(err)
 	}
-	defer func() { _ = client.Disconnect(context.TODO()) }()
+	//defer func() { _ = client.Disconnect(context.TODO()) }()
 
 	/*	// Get a handle to the application collection and clear existing data.
 		coll := client.Database("test").Collection("coll")
 		_ = coll.Drop(context.TODO())
 	*/
 	// Set up the key vault for this example.
-	keyVaultColl := client.Database(viper.GetString("mongo-secured-keys.key_vault_db_name")).Collection(viper.GetString("mongo-secured-keys.key_vault_collection_name"))
+	keyVaultColl := client.Database(viper.GetString("mongo.name")).Collection(viper.GetString("mongo-secured-keys.key_vault_collection_name"))
 	_ = keyVaultColl.Drop(context.TODO())
 	// Ensure that two data keys cannot share the same keyAltName.
 	keyVaultIndex := mongo.IndexModel{

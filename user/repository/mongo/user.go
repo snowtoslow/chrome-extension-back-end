@@ -18,13 +18,13 @@ type User struct {
 
 type UserRepository struct {
 	dbToStore *mongo.Collection
-	dbForKeys *mongo.Collection
+	/*dbForKeys *mongo.Collection*/
 }
 
-func NewUserRepository(databaseToStore *mongo.Database, collectionToStore string, databaseWithKeys *mongo.Database, collectionWithKeys string) *UserRepository {
+func NewUserRepository(databaseToStore *mongo.Database, collectionToStore string /*, databaseWithKeys *mongo.Database, collectionWithKeys string*/) *UserRepository {
 	return &UserRepository{
 		dbToStore: databaseToStore.Collection(collectionToStore),
-		dbForKeys: databaseWithKeys.Collection(collectionWithKeys),
+		/*dbForKeys: databaseWithKeys.Collection(collectionWithKeys),*/
 	}
 }
 
