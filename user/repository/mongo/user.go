@@ -5,7 +5,6 @@ import (
 	"chrome-extension-back-end/utils"
 	"context"
 	"encoding/json"
-	"fmt"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
@@ -32,7 +31,12 @@ func NewUserRepository(databaseToStore *mongo.Client) *UserRepository {
 
 func (r UserRepository) CreateUser(ctx context.Context, user *models.User) (err error) {
 
-	dataKeyID, clientEncryption := utils.CreateKey(r.dbToStore)
+	clientEncryption, err := utils.CreateClientEncryption(r.dbToStore)
+	if err != nil {
+		return err
+	}
+
+	dataKeyID := utils.CreateKey(r.dbToStore, clientEncryption)
 
 	model := toMongoUser(user)
 
@@ -53,7 +57,7 @@ func (r UserRepository) CreateUser(ctx context.Context, user *models.User) (err 
 		SetAlgorithm("AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic").
 		SetKeyID(dataKeyID)
 
-	encryptedField, err := clientEncryption.Encrypt(context.TODO(), rawValue, encryptionOpts)
+	encryptedField, err := clientEncryption.Encrypt(ctx, rawValue, encryptionOpts)
 
 	res, err := r.dbToStore.Database("extensiondb").Collection("user_collection").InsertOne(ctx, bson.D{{"encryptedField", encryptedField}})
 	if err != nil {
@@ -66,11 +70,13 @@ func (r UserRepository) CreateUser(ctx context.Context, user *models.User) (err 
 
 func (r UserRepository) GetUserById(ctx context.Context, id string) (user *models.User, err error) {
 
-	_, clientEncryption := utils.CreateKey(r.dbToStore)
+	clientEncryption, err := utils.CreateClientEncryption(r.dbToStore)
+	if err != nil {
+		return nil, err
+	}
 
 	objectId, err := primitive.ObjectIDFromHex(id)
 	if err != nil {
-		log.Println("ERR1:", err)
 		return nil, err
 	}
 
@@ -79,18 +85,22 @@ func (r UserRepository) GetUserById(ctx context.Context, id string) (user *model
 		"_id": objectId,
 	}).Decode(&foundDoc)
 	if err != nil {
-		log.Println("ERR2:", err)
 		return nil, err
 	}
 
 	// Decrypt the encrypted field in the found document.
 	decrypted, err := clientEncryption.Decrypt(ctx, foundDoc["encryptedField"].(primitive.Binary))
 	if err != nil {
-		log.Println("ERR3:", err)
 		return nil, err
 	}
+	var test interface{}
+	if err := decrypted.Unmarshal(&test); err != nil {
+		log.Println(err)
+	}
 
-	fmt.Printf("Decrypted value: %s\n", decrypted)
+	log.Println(test)
+
+	/*myUser := new(User)*/
 
 	/*myUser := new(User)
 	err = r.dbToStore.Database("").Collection("").FindOne(ctx, bson.M{
