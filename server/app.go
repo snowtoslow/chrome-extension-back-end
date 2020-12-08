@@ -28,14 +28,16 @@ type App struct {
 
 func NewApp() *App {
 
-	db, err := initDB()
+	dbWithData := initDB()
+
+	dbWithKeys, err := initKeyDb()
 	if err != nil {
-		log.Println(err)
+		log.Println("ERROR")
 	}
 
-	fmt.Println("DATABASE SUCESSFULY CONECTED!", db)
+	fmt.Println("DATABASE SUCESSFULY CONECTED!", dbWithData)
 
-	benchRepo := userrepo.NewUserRepository(db, viper.GetString("mongo.user_collection"))
+	benchRepo := userrepo.NewUserRepository(dbWithData, viper.GetString("mongo.user_collection"), dbWithKeys, viper.GetString("mongo-secured-keys.testKeyVault"))
 
 	return &App{
 		userUc: userusecase.NewUserUseCase(benchRepo),
@@ -94,12 +96,30 @@ func (a *App) Run(port string) error {
 
 }
 
-func initDB() (*mongo.Database, error) {
-
-	decodeKey, err := base64.StdEncoding.DecodeString(viper.GetString("mongo.local_master_key"))
+func initDB() *mongo.Database {
+	client, err := mongo.NewClient(options.Client().ApplyURI(viper.GetString("mongo.uri")))
 	if err != nil {
-		return nil, err
+		log.Fatalf("Error occured while establishing connection to mongoDB")
 	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	err = client.Connect(ctx)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	err = client.Ping(context.Background(), nil)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	return client.Database(viper.GetString("mongo.name"))
+}
+
+func initKeyDb() (*mongo.Database, error) {
+	decodeKey, err := base64.StdEncoding.DecodeString(viper.GetString("mongo-secured-keys.local_master_key"))
 
 	kmsProviders := map[string]map[string]interface{}{
 		"local": {
@@ -107,21 +127,25 @@ func initDB() (*mongo.Database, error) {
 		},
 	}
 
-	keyVaultDBName, keyVaultCollName := "encryption", "testKeyVault"
-	keyVaultNamespace := keyVaultDBName + "." + keyVaultCollName
+	// The MongoDB namespace (db.collection) used to store the encryption data keys.
 
-	client, err := mongo.Connect(context.TODO(), options.Client().ApplyURI(viper.GetString("mongo.uri")))
+	keyVaultNamespace := viper.GetString("mongo-secured-keys.key_vault_db_name") + "." + viper.GetString("mongo-secured-keys.key_vault_collection_name")
+
+	// The Client used to read/write application data.
+	client, err := mongo.Connect(context.TODO(), options.Client().ApplyURI("mongodb://localhost:27017"))
 	if err != nil {
-		return nil, err
+		panic(err)
 	}
 	defer func() { _ = client.Disconnect(context.TODO()) }()
 
-	coll := client.Database(viper.GetString("mongo.name")).Collection(viper.GetString("mongo.user_collection"))
-	_ = coll.Drop(context.TODO())
-
-	keyVaultColl := client.Database(keyVaultDBName).Collection(keyVaultCollName)
+	/*	// Get a handle to the application collection and clear existing data.
+		coll := client.Database("test").Collection("coll")
+		_ = coll.Drop(context.TODO())
+	*/
+	// Set up the key vault for this example.
+	keyVaultColl := client.Database(viper.GetString("mongo-secured-keys.key_vault_db_name")).Collection(viper.GetString("mongo-secured-keys.key_vault_collection_name"))
 	_ = keyVaultColl.Drop(context.TODO())
-
+	// Ensure that two data keys cannot share the same keyAltName.
 	keyVaultIndex := mongo.IndexModel{
 		Keys: bson.D{{"keyAltNames", 1}},
 		Options: options.Index().
@@ -132,45 +156,29 @@ func initDB() (*mongo.Database, error) {
 				}},
 			}),
 	}
-
 	if _, err = keyVaultColl.Indexes().CreateOne(context.TODO(), keyVaultIndex); err != nil {
 		return nil, err
 	}
+
+	// Create the ClientEncryption object to use for explicit encryption/decryption. The Client passed to
+	// NewClientEncryption is used to read/write to the key vault. This can be the same Client used by the main
+	// application.
 	clientEncryptionOpts := options.ClientEncryption().
 		SetKmsProviders(kmsProviders).
 		SetKeyVaultNamespace(keyVaultNamespace)
-
 	clientEncryption, err := mongo.NewClientEncryption(client, clientEncryptionOpts)
 	if err != nil {
 		return nil, err
 	}
-	defer func() { _ = clientEncryption.Close(context.TODO()) }()
+	//defer func() { _ = clientEncryption.Close(context.TODO()) }()
 
+	// Create a new data key for the encrypted field.
 	dataKeyOpts := options.DataKey().SetKeyAltNames([]string{"go_encryption_example"})
-	_, err = clientEncryption.CreateDataKey(context.TODO(), "local", dataKeyOpts) //datakeyId
+	_, err = clientEncryption.CreateDataKey(context.TODO(), "local", dataKeyOpts)
 	if err != nil {
 		return nil, err
 	}
+	//dataKeyId
 
 	return client.Database(viper.GetString("mongo.name")), nil
 }
-
-//previous db config;
-/*client, err := mongo.NewClient(options.Client().ApplyURI(viper.GetString("mongo.uri")))
-if err != nil {
-	log.Fatalf("Error occured while establishing connection to mongoDB")
-}
-
-ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-defer cancel()
-
-err = client.Connect(ctx)
-if err != nil {
-	log.Fatal(err)
-}
-
-err = client.Ping(context.Background(), nil)
-if err != nil {
-	log.Fatal(err)
-}
-*/

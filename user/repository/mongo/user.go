@@ -6,6 +6,7 @@ import (
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
+	"log"
 )
 
 type User struct {
@@ -16,19 +17,22 @@ type User struct {
 }
 
 type UserRepository struct {
-	db *mongo.Collection
+	dbToStore *mongo.Collection
+	dbForKeys *mongo.Collection
 }
 
-func NewUserRepository(database *mongo.Database, collection string) *UserRepository {
+func NewUserRepository(databaseToStore *mongo.Database, collectionToStore string, databaseWithKeys *mongo.Database, collectionWithKeys string) *UserRepository {
 	return &UserRepository{
-		db: database.Collection(collection),
+		dbToStore: databaseToStore.Collection(collectionToStore),
+		dbForKeys: databaseWithKeys.Collection(collectionWithKeys),
 	}
 }
 
 func (r UserRepository) CreateUser(ctx context.Context, user *models.User) (err error) {
 	model := toMongoUser(user)
-	res, err := r.db.InsertOne(ctx, model)
+	res, err := r.dbToStore.InsertOne(ctx, model)
 	if err != nil {
+		log.Println("EERRR", err)
 		return err
 	}
 
@@ -44,7 +48,7 @@ func (r UserRepository) GetUserById(ctx context.Context, id string) (user *model
 	}
 
 	myUser := new(User)
-	err = r.db.FindOne(ctx, bson.M{
+	err = r.dbToStore.FindOne(ctx, bson.M{
 		"_id": objectId,
 	}).Decode(myUser)
 
