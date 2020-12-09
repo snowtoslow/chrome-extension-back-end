@@ -8,7 +8,6 @@ import (
 	"context"
 	"fmt"
 	"github.com/gin-gonic/gin"
-	"github.com/itsjamie/gin-cors"
 	"github.com/spf13/viper"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
@@ -49,9 +48,7 @@ func (a *App) Run(port string) error {
 
 	router := gin.New()
 
-	api := router.Group("/api")
-
-	router.Use(cors.Middleware(cors.Config{
+	/*router.Use(cors.Middleware(cors.Config{
 		Origins:         "*",
 		Methods:         "GET, PUT, POST, DELETE",
 		RequestHeaders:  "Origin, Authorization, Content-Type", //		RequestHeaders: "Origin, Authorization, Content-Type",
@@ -59,8 +56,13 @@ func (a *App) Run(port string) error {
 		MaxAge:          50 * time.Second,
 		Credentials:     true,
 		ValidateHeaders: false,
+
 	}), gin.Recovery(),
-		gin.Logger())
+		gin.Logger())*/
+
+	router.Use(CORS())
+
+	api := router.Group("/api")
 
 	ushttp.RegisterHTTPEndpoints(api, a.userUc)
 
@@ -129,4 +131,19 @@ func initDB() *mongo.Database {
 	}
 
 	return client.Database(viper.GetString("mongo.name"))
+}
+
+func CORS() gin.HandlerFunc {
+	// TO allow CORS
+	return func(c *gin.Context) {
+		c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
+		c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, accept, origin, Cache-Control, X-Requested-With")
+		c.Writer.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS, GET, PUT, DELETE")
+		//c.Writer.Header().Set("ValidateHeaders","false")
+		if c.Request.Method == "OPTIONS" {
+			c.AbortWithStatus(204)
+			return
+		}
+		c.Next()
+	}
 }
