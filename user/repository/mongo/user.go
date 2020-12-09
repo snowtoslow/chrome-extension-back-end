@@ -4,11 +4,9 @@ import (
 	"chrome-extension-back-end/models"
 	"chrome-extension-back-end/utils"
 	"context"
-	"encoding/json"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
-	"go.mongodb.org/mongo-driver/mongo/options"
 	"log"
 )
 
@@ -17,13 +15,6 @@ type User struct {
 	Email        string             `bson:"email"`
 	Password     string             `bson:"password"`
 	PersonalData []string           `bson:"personalData"`
-}
-
-type UserDTO struct {
-	ID           string   `json:"ID"`
-	Email        string   `json:"Email"`
-	Password     string   `json:"Password"`
-	PersonalData []string `json:"PersonalData"`
 }
 
 type UserRepository struct {
@@ -38,35 +29,21 @@ func NewUserRepository(databaseToStore *mongo.Client) *UserRepository {
 
 func (r UserRepository) CreateUser(ctx context.Context, user *models.User) (err error) {
 
-	clientEncryption, err := utils.CreateClientEncryption(r.dbToStore)
+	encryptedString, err := utils.EncryptField(user.Email, r.dbToStore)
 	if err != nil {
 		return err
 	}
 
-	dataKeyID := utils.CreateKey(r.dbToStore, clientEncryption)
+	encryptedPersonalValues, err := utils.EncryptArrayFields(user.PersonalData, r.dbToStore)
+	if err != nil {
+		return err
+	}
+
+	user.Email = encryptedString
+	user.PersonalData = encryptedPersonalValues
 
 	model := toMongoUser(user)
-
-	bytesFromUser, err := json.Marshal(model)
-	if err != nil {
-		return err
-	}
-
-	rawValueType, rawValueData, err := bson.MarshalValue(string(bytesFromUser))
-
-	rawValue := bson.RawValue{Type: rawValueType, Value: rawValueData}
-
-	if err != nil {
-		return err
-	}
-
-	encryptionOpts := options.Encrypt().
-		SetAlgorithm("AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic").
-		SetKeyID(dataKeyID)
-
-	encryptedField, err := clientEncryption.Encrypt(ctx, rawValue, encryptionOpts)
-
-	res, err := r.dbToStore.Database("extensiondb").Collection("user_collection").InsertOne(ctx, bson.D{{"encryptedField", encryptedField}})
+	res, err := r.dbToStore.Database("extensiondb").Collection("user_collection").InsertOne(ctx, model)
 	if err != nil {
 		return err
 	}

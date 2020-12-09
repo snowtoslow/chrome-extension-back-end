@@ -40,7 +40,7 @@ func CreateKey(client *mongo.Client, clientEncryption *mongo.ClientEncryption) p
 }
 
 func CreateClientEncryption(client *mongo.Client) (*mongo.ClientEncryption, error) {
-	kmsProviders, keyVaultNamespace, err := CreateKmsProviders()
+	kmsProviders, keyVaultNamespace, err := createKmsProviders()
 	clientEncryptionOpts := options.ClientEncryption().
 		SetKmsProviders(kmsProviders).
 		SetKeyVaultNamespace(keyVaultNamespace)
@@ -53,7 +53,7 @@ func CreateClientEncryption(client *mongo.Client) (*mongo.ClientEncryption, erro
 	return clientEncryption, err
 }
 
-func CreateKmsProviders() (map[string]map[string]interface{}, string, error) {
+func createKmsProviders() (map[string]map[string]interface{}, string, error) {
 	keyVaultNamespace := viper.GetString("mongo.name") + "." + viper.GetString("mongo-secured-keys.key_vault_collection_name")
 	decodeKey, err := base64.StdEncoding.DecodeString(viper.GetString("mongo-secured-keys.local_master_key"))
 	if err != nil {
@@ -67,4 +67,44 @@ func CreateKmsProviders() (map[string]map[string]interface{}, string, error) {
 	}
 
 	return kmsProviders, keyVaultNamespace, nil
+}
+
+func EncryptArrayFields(dataToEncrypt []string, client *mongo.Client) (encryptedArray []string, err error) {
+	if dataToEncrypt != nil {
+		for _, v := range dataToEncrypt {
+			encryptedString, err := EncryptField(v, client)
+			if err != nil {
+				return nil, err
+			}
+			encryptedArray = append(encryptedArray, encryptedString)
+		}
+	}
+	return encryptedArray, nil
+}
+
+func EncryptField(field string, client *mongo.Client) (encryptedString string, err error) {
+	clientEncryption, err := CreateClientEncryption(client)
+	if err != nil {
+		return "", err
+	}
+
+	dataKeyID := CreateKey(client, clientEncryption)
+
+	rawValueType, rawValueData, err := bson.MarshalValue(field)
+	if err != nil {
+		panic(err)
+	}
+
+	rawValue := bson.RawValue{Type: rawValueType, Value: rawValueData}
+
+	encryptionOpts := options.Encrypt().
+		SetAlgorithm("AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic").
+		SetKeyID(dataKeyID)
+
+	encryptedField, err := clientEncryption.Encrypt(context.Background(), rawValue, encryptionOpts)
+	if err != nil {
+		return "", err
+	}
+
+	return string(encryptedField.Data), nil
 }
