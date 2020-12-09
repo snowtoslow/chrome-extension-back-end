@@ -1,6 +1,7 @@
 package mongo
 
 import (
+	"chrome-extension-back-end/auth"
 	"chrome-extension-back-end/models"
 	"chrome-extension-back-end/utils"
 	"context"
@@ -20,8 +21,8 @@ type User struct {
 
 type UserDTO struct {
 	ID           primitive.ObjectID  `bson:"_id,omitempty"`
-	Email        *primitive.Binary   `bson:"email"`
-	Password     string              `bson:"password"`
+	Email        string              `bson:"email"`
+	Password     *primitive.Binary   `bson:"password"`
 	PersonalData []*primitive.Binary `bson:"personalData"`
 }
 
@@ -46,15 +47,14 @@ func (r UserRepository) GetUserByEmailAndPassword(ctx context.Context, email, pa
 
 	user := new(UserDTO)
 	err = r.dbToStore.Database("extensiondb").Collection("user_collection").FindOne(ctx, bson.M{
-		/*"email":    email,*/
-		"password": password,
+		"email": email,
 	}).Decode(user)
 
 	if err != nil {
 		return nil, err
 	}
 
-	decrypted, err := clientEncryption.Decrypt(context.TODO(), *user.Email)
+	decrypted, err := clientEncryption.Decrypt(context.TODO(), *user.Password)
 	if err != nil {
 		return nil, err
 	}
@@ -62,6 +62,10 @@ func (r UserRepository) GetUserByEmailAndPassword(ctx context.Context, email, pa
 	unquotedDecrypt, err := strconv.Unquote(decrypted.String())
 	if err != nil {
 		return nil, err
+	}
+
+	if unquotedDecrypt != password {
+		return nil, auth.ErrInvalidPassword
 	}
 
 	if user.PersonalData != nil {
@@ -77,7 +81,7 @@ func (r UserRepository) GetUserByEmailAndPassword(ctx context.Context, email, pa
 		}
 	}
 
-	foundUser := toUser(unquotedDecrypt, myArray, user.Password, user.ID.Hex())
+	foundUser := toUser(unquotedDecrypt, myArray, user.Email, user.ID.Hex())
 
 	return foundUser, nil
 }
@@ -93,7 +97,7 @@ func (r UserRepository) CreateUser(ctx context.Context, user *models.User) (err 
 
 	dataKeyID := utils.CreateKey(r.dbToStore, clientEncryption)
 
-	rawValueType, rawValueData, err := bson.MarshalValue(user.Email)
+	rawValueType, rawValueData, err := bson.MarshalValue(user.Password)
 	if err != nil {
 		return err
 	}
@@ -124,7 +128,7 @@ func (r UserRepository) CreateUser(ctx context.Context, user *models.User) (err 
 		}
 	}
 
-	model := toUserDTO(&encryptedField, myrray, user.Password)
+	model := toUserDTO(&encryptedField, user.Email, myrray)
 
 	res, err := r.dbToStore.Database("extensiondb").Collection("user_collection").InsertOne(ctx, model)
 	if err != nil {
@@ -154,7 +158,7 @@ func (r UserRepository) GetUserById(ctx context.Context, id string) (user *model
 		"_id": objectId,
 	}).Decode(myUser)
 
-	decrypted, err := clientEncryption.Decrypt(context.TODO(), *myUser.Email)
+	decrypted, err := clientEncryption.Decrypt(context.TODO(), *myUser.Password)
 	if err != nil {
 		return nil, err
 	}
@@ -177,7 +181,7 @@ func (r UserRepository) GetUserById(ctx context.Context, id string) (user *model
 		}
 	}
 
-	foundUser := toUser(unquotedDecrypt, myArray, myUser.Password, myUser.ID.Hex())
+	foundUser := toUser(unquotedDecrypt, myArray, myUser.Email, myUser.ID.Hex())
 
 	return foundUser, nil
 }
@@ -208,10 +212,10 @@ func toUser(email string, myPersonalData []string, password string, id string) *
 	}
 }
 
-func toUserDTO(binary *primitive.Binary, binary2 []*primitive.Binary, string2 string) *UserDTO {
+func toUserDTO(binary *primitive.Binary, string2 string, binary2 []*primitive.Binary) *UserDTO {
 	return &UserDTO{
-		Password:     string2,
-		Email:        binary,
+		Password:     binary,
+		Email:        string2,
 		PersonalData: binary2,
 	}
 }

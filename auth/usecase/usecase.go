@@ -8,7 +8,6 @@ import (
 	"crypto/sha1"
 	"fmt"
 	"github.com/dgrijalva/jwt-go/v4"
-	"log"
 	"time"
 )
 
@@ -42,8 +41,6 @@ func (a *AuthUseCase) SignIn(ctx context.Context, email, password string) (strin
 	pwd.Write([]byte(password))
 	pwd.Write([]byte(a.hashSalt))
 	password = fmt.Sprintf("%x", pwd.Sum(nil))
-
-	log.Println(email, password)
 
 	user, err := a.userRepo.GetUserByEmailAndPassword(ctx, email, password)
 	if err != nil {
