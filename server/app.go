@@ -26,11 +26,14 @@ type App struct {
 
 func NewApp() *App {
 
-	db := initDB()
+	dbWithData, err := initClient()
+	if err != nil {
+		log.Println(err)
+	}
 
-	fmt.Println("DATABASE SUCESSFULY CONECTED!", db)
+	fmt.Println("DATABASE SUCESSFULY CONECTED!", dbWithData)
 
-	benchRepo := userrepo.NewUserRepository(db, viper.GetString("mongo.user_collection"))
+	benchRepo := userrepo.NewUserRepository(dbWithData)
 
 	return &App{
 		userUc: userusecase.NewUserUseCase(benchRepo),
@@ -44,6 +47,7 @@ func (a *App) Run(port string) error {
 		gin.Logger(),
 	)*/
 
+	// Initialize a new Gin router
 	router := gin.New()
 
 	/*router.Use(cors.Middleware(cors.Config{
@@ -88,6 +92,25 @@ func (a *App) Run(port string) error {
 
 	return a.httpServer.Shutdown(ctx)
 
+}
+
+func initClient() (*mongo.Client, error) {
+	client, err := mongo.NewClient(options.Client().ApplyURI(viper.GetString("mongo.uri")))
+	if err != nil {
+		log.Fatalf("Error occured while establishing connection to mongoDB")
+		return nil, err
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	err = client.Connect(ctx)
+	if err != nil {
+		log.Fatal(err)
+		return nil, err
+	}
+
+	return client, nil
 }
 
 func initDB() *mongo.Database {

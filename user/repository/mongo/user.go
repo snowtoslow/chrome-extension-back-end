@@ -2,10 +2,13 @@ package mongo
 
 import (
 	"chrome-extension-back-end/models"
+	"chrome-extension-back-end/utils"
 	"context"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
+	"strconv"
 )
 
 type User struct {
@@ -15,19 +18,68 @@ type User struct {
 	PersonalData []string           `bson:"personalData"`
 }
 
-type UserRepository struct {
-	db *mongo.Collection
+type UserDTO struct {
+	ID           primitive.ObjectID  `bson:"_id,omitempty"`
+	Email        *primitive.Binary   `bson:"email"`
+	Password     string              `bson:"password"`
+	PersonalData []*primitive.Binary `bson:"personalData"`
 }
 
-func NewUserRepository(database *mongo.Database, collection string) *UserRepository {
+type UserRepository struct {
+	dbToStore *mongo.Client
+}
+
+func NewUserRepository(databaseToStore *mongo.Client) *UserRepository {
 	return &UserRepository{
-		db: database.Collection(collection),
+		dbToStore: databaseToStore,
 	}
 }
 
 func (r UserRepository) CreateUser(ctx context.Context, user *models.User) (err error) {
-	model := toMongoUser(user)
-	res, err := r.db.InsertOne(ctx, model)
+
+	myrray := make([]*primitive.Binary, len(user.PersonalData))
+
+	clientEncryption, err := utils.CreateClientEncryption(r.dbToStore)
+	if err != nil {
+		return err
+	}
+
+	dataKeyID := utils.CreateKey(r.dbToStore, clientEncryption)
+
+	rawValueType, rawValueData, err := bson.MarshalValue(user.Email)
+	if err != nil {
+		return err
+	}
+
+	rawValue := bson.RawValue{Type: rawValueType, Value: rawValueData}
+
+	encryptionOpts := options.Encrypt().
+		SetAlgorithm("AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic").
+		SetKeyID(dataKeyID)
+
+	encryptedField, err := clientEncryption.Encrypt(context.Background(), rawValue, encryptionOpts)
+	if err != nil {
+		return err
+	}
+
+	if user.PersonalData != nil {
+		for _, v := range user.PersonalData {
+			rawValueType, rawValueData, err := bson.MarshalValue(v)
+			if err != nil {
+				return err
+			}
+			rawValue := bson.RawValue{Type: rawValueType, Value: rawValueData}
+			encryptedField, err := clientEncryption.Encrypt(context.Background(), rawValue, encryptionOpts)
+			if err != nil {
+				return err
+			}
+			myrray = append(myrray, &encryptedField)
+		}
+	}
+
+	model := toUserDTO(&encryptedField, myrray, user.Password)
+
+	res, err := r.dbToStore.Database("extensiondb").Collection("user_collection").InsertOne(ctx, model)
 	if err != nil {
 		return err
 	}
@@ -38,21 +90,49 @@ func (r UserRepository) CreateUser(ctx context.Context, user *models.User) (err 
 
 func (r UserRepository) GetUserById(ctx context.Context, id string) (user *models.User, err error) {
 
+	var myArray []string
+
+	clientEncryption, err := utils.CreateClientEncryption(r.dbToStore)
+	if err != nil {
+		return nil, err
+	}
+
 	objectId, err := primitive.ObjectIDFromHex(id)
 	if err != nil {
 		return nil, err
 	}
 
-	myUser := new(User)
-	err = r.db.FindOne(ctx, bson.M{
+	myUser := new(UserDTO)
+	err = r.dbToStore.Database("extensiondb").Collection("user_collection").FindOne(ctx, bson.M{
 		"_id": objectId,
 	}).Decode(myUser)
 
+	decrypted, err := clientEncryption.Decrypt(context.TODO(), *myUser.Email)
 	if err != nil {
 		return nil, err
 	}
 
-	return toModel(myUser), nil
+	unquotedDecrypt, err := strconv.Unquote(decrypted.String())
+	if err != nil {
+		return nil, err
+	}
+
+	if myUser.PersonalData != nil {
+		for _, v := range myUser.PersonalData {
+			if v != nil {
+				decryptedVal, err := clientEncryption.Decrypt(context.TODO(), *v)
+				if err != nil {
+					return nil, err
+				}
+				unquoted, _ := strconv.Unquote(decryptedVal.String())
+				myArray = append(myArray, unquoted)
+			}
+		}
+	}
+
+	foundUser := toUser(unquotedDecrypt, myArray, myUser.Password, myUser.ID.Hex())
+
+	return foundUser, nil
 }
 
 func toMongoUser(u *models.User) *User {
@@ -69,5 +149,22 @@ func toModel(u *User) *models.User {
 		Email:        u.Email,
 		Password:     u.Password,
 		PersonalData: u.PersonalData,
+	}
+}
+
+func toUser(email string, myPersonalData []string, password string, id string) *models.User {
+	return &models.User{
+		Id:           id,
+		Email:        email,
+		PersonalData: myPersonalData,
+		Password:     password,
+	}
+}
+
+func toUserDTO(binary *primitive.Binary, binary2 []*primitive.Binary, string2 string) *UserDTO {
+	return &UserDTO{
+		Password:     string2,
+		Email:        binary,
+		PersonalData: binary2,
 	}
 }
