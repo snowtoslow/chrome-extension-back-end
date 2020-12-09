@@ -69,7 +69,7 @@ func createKmsProviders() (map[string]map[string]interface{}, string, error) {
 	return kmsProviders, keyVaultNamespace, nil
 }
 
-func EncryptArrayFields(dataToEncrypt []string, client *mongo.Client) (encryptedArray []string, err error) {
+func EncryptArrayFields(dataToEncrypt []string, client *mongo.Client) (encryptedArray []*primitive.Binary, err error) {
 	if dataToEncrypt != nil {
 		for _, v := range dataToEncrypt {
 			encryptedString, err := EncryptField(v, client)
@@ -82,17 +82,17 @@ func EncryptArrayFields(dataToEncrypt []string, client *mongo.Client) (encrypted
 	return encryptedArray, nil
 }
 
-func EncryptField(field string, client *mongo.Client) (encryptedString string, err error) {
+func EncryptField(field string, client *mongo.Client) (encryptedString *primitive.Binary, err error) {
 	clientEncryption, err := CreateClientEncryption(client)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
 	dataKeyID := CreateKey(client, clientEncryption)
 
 	rawValueType, rawValueData, err := bson.MarshalValue(field)
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
 
 	rawValue := bson.RawValue{Type: rawValueType, Value: rawValueData}
@@ -103,8 +103,36 @@ func EncryptField(field string, client *mongo.Client) (encryptedString string, e
 
 	encryptedField, err := clientEncryption.Encrypt(context.Background(), rawValue, encryptionOpts)
 	if err != nil {
+		return nil, err
+	}
+
+	return &encryptedField, nil
+}
+
+func DecryptArray(values []*primitive.Binary, client *mongo.Client) (myarray []string, err error) {
+	if values != nil {
+		for _, v := range values {
+			decrypted, err := DecryptField(v, client)
+			if err != nil {
+				return nil, err
+			}
+			myarray = append(myarray, decrypted)
+		}
+	}
+
+	return myarray, nil
+}
+
+func DecryptField(value *primitive.Binary, client *mongo.Client) (string, error) {
+	clientEncryption, err := CreateClientEncryption(client)
+	if err != nil {
 		return "", err
 	}
 
-	return string(encryptedField.Data), nil
+	decrypted, err := clientEncryption.Decrypt(context.TODO(), *value)
+	if err != nil {
+		return "", err
+	}
+
+	return decrypted.String(), err
 }

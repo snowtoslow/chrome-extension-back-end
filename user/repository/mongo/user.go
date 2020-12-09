@@ -7,7 +7,8 @@ import (
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
-	"log"
+	"go.mongodb.org/mongo-driver/mongo/options"
+	"strconv"
 )
 
 type User struct {
@@ -15,6 +16,13 @@ type User struct {
 	Email        string             `bson:"email"`
 	Password     string             `bson:"password"`
 	PersonalData []string           `bson:"personalData"`
+}
+
+type UserDTO struct {
+	ID           primitive.ObjectID  `bson:"_id,omitempty"`
+	Email        *primitive.Binary   `bson:"email"`
+	Password     string              `bson:"password"`
+	PersonalData []*primitive.Binary `bson:"personalData"`
 }
 
 type UserRepository struct {
@@ -29,20 +37,48 @@ func NewUserRepository(databaseToStore *mongo.Client) *UserRepository {
 
 func (r UserRepository) CreateUser(ctx context.Context, user *models.User) (err error) {
 
-	encryptedString, err := utils.EncryptField(user.Email, r.dbToStore)
+	myrray := make([]*primitive.Binary, len(user.PersonalData))
+
+	clientEncryption, err := utils.CreateClientEncryption(r.dbToStore)
 	if err != nil {
 		return err
 	}
 
-	encryptedPersonalValues, err := utils.EncryptArrayFields(user.PersonalData, r.dbToStore)
+	dataKeyID := utils.CreateKey(r.dbToStore, clientEncryption)
+
+	rawValueType, rawValueData, err := bson.MarshalValue(user.Email)
 	if err != nil {
 		return err
 	}
 
-	user.Email = encryptedString
-	user.PersonalData = encryptedPersonalValues
+	rawValue := bson.RawValue{Type: rawValueType, Value: rawValueData}
 
-	model := toMongoUser(user)
+	encryptionOpts := options.Encrypt().
+		SetAlgorithm("AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic").
+		SetKeyID(dataKeyID)
+
+	encryptedField, err := clientEncryption.Encrypt(context.Background(), rawValue, encryptionOpts)
+	if err != nil {
+		return err
+	}
+
+	if user.PersonalData != nil {
+		for _, v := range user.PersonalData {
+			rawValueType, rawValueData, err := bson.MarshalValue(v)
+			if err != nil {
+				return err
+			}
+			rawValue := bson.RawValue{Type: rawValueType, Value: rawValueData}
+			encryptedField, err := clientEncryption.Encrypt(context.Background(), rawValue, encryptionOpts)
+			if err != nil {
+				return err
+			}
+			myrray = append(myrray, &encryptedField)
+		}
+	}
+
+	model := toUserDTO(&encryptedField, myrray, user.Password)
+
 	res, err := r.dbToStore.Database("extensiondb").Collection("user_collection").InsertOne(ctx, model)
 	if err != nil {
 		return err
@@ -54,6 +90,8 @@ func (r UserRepository) CreateUser(ctx context.Context, user *models.User) (err 
 
 func (r UserRepository) GetUserById(ctx context.Context, id string) (user *models.User, err error) {
 
+	var myArray []string
+
 	clientEncryption, err := utils.CreateClientEncryption(r.dbToStore)
 	if err != nil {
 		return nil, err
@@ -64,37 +102,37 @@ func (r UserRepository) GetUserById(ctx context.Context, id string) (user *model
 		return nil, err
 	}
 
-	var foundDoc bson.M
+	myUser := new(UserDTO)
 	err = r.dbToStore.Database("extensiondb").Collection("user_collection").FindOne(ctx, bson.M{
-		"_id": objectId,
-	}).Decode(&foundDoc)
-	if err != nil {
-		return nil, err
-	}
-
-	// Decrypt the encrypted field in the found document.
-	decrypted, err := clientEncryption.Decrypt(ctx, foundDoc["encryptedField"].(primitive.Binary))
-	if err != nil {
-		return nil, err
-	}
-
-	myStr := string(decrypted.Value)
-
-	log.Println(myStr[1:])
-
-	/*myUser := new(User)*/
-
-	/*myUser := new(User)
-	err = r.dbToStore.Database("").Collection("").FindOne(ctx, bson.M{
 		"_id": objectId,
 	}).Decode(myUser)
 
+	decrypted, err := clientEncryption.Decrypt(context.TODO(), *myUser.Email)
 	if err != nil {
 		return nil, err
 	}
 
-	return toModel(myUser), nil*/
-	return nil, nil
+	unquotedDecrypt, err := strconv.Unquote(decrypted.String())
+	if err != nil {
+		return nil, err
+	}
+
+	if myUser.PersonalData != nil {
+		for _, v := range myUser.PersonalData {
+			if v != nil {
+				decryptedVal, err := clientEncryption.Decrypt(context.TODO(), *v)
+				if err != nil {
+					return nil, err
+				}
+				unquoted, _ := strconv.Unquote(decryptedVal.String())
+				myArray = append(myArray, unquoted)
+			}
+		}
+	}
+
+	foundUser := toUser(unquotedDecrypt, myArray, myUser.Password, myUser.ID.Hex())
+
+	return foundUser, nil
 }
 
 func toMongoUser(u *models.User) *User {
@@ -111,5 +149,22 @@ func toModel(u *User) *models.User {
 		Email:        u.Email,
 		Password:     u.Password,
 		PersonalData: u.PersonalData,
+	}
+}
+
+func toUser(email string, myPersonalData []string, password string, id string) *models.User {
+	return &models.User{
+		Id:           id,
+		Email:        email,
+		PersonalData: myPersonalData,
+		Password:     password,
+	}
+}
+
+func toUserDTO(binary *primitive.Binary, binary2 []*primitive.Binary, string2 string) *UserDTO {
+	return &UserDTO{
+		Password:     string2,
+		Email:        binary,
+		PersonalData: binary2,
 	}
 }
