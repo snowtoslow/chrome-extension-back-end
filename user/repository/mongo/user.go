@@ -19,6 +19,13 @@ type User struct {
 	PersonalData []string           `bson:"personalData"`
 }
 
+type UserDTO struct {
+	ID           string   `json:"ID"`
+	Email        string   `json:"Email"`
+	Password     string   `json:"Password"`
+	PersonalData []string `json:"PersonalData"`
+}
+
 type UserRepository struct {
 	dbToStore *mongo.Client
 }
@@ -93,12 +100,10 @@ func (r UserRepository) GetUserById(ctx context.Context, id string) (user *model
 	if err != nil {
 		return nil, err
 	}
-	var test interface{}
-	if err := decrypted.Unmarshal(&test); err != nil {
-		log.Println(err)
-	}
 
-	log.Println(test)
+	myStr := string(decrypted.Value)
+
+	log.Println(myStr[1:])
 
 	/*myUser := new(User)*/
 
