@@ -8,7 +8,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/gin-gonic/gin"
-	"github.com/itsjamie/gin-cors"
+	/*"github.com/itsjamie/gin-cors"*/
 	"github.com/spf13/viper"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
@@ -44,13 +44,9 @@ func (a *App) Run(port string) error {
 		gin.Logger(),
 	)*/
 
-	// Initialize a new Gin router
 	router := gin.New()
 
-	api := router.Group("/api")
-
-	// Apply the middleware to the router (works with groups too)
-	router.Use(cors.Middleware(cors.Config{
+	/*router.Use(cors.Middleware(cors.Config{
 		Origins:         "*",
 		Methods:         "GET, PUT, POST, DELETE",
 		RequestHeaders:  "Origin, Authorization, Content-Type", //		RequestHeaders: "Origin, Authorization, Content-Type",
@@ -58,8 +54,13 @@ func (a *App) Run(port string) error {
 		MaxAge:          50 * time.Second,
 		Credentials:     true,
 		ValidateHeaders: false,
+
 	}), gin.Recovery(),
-		gin.Logger())
+		gin.Logger())*/
+
+	router.Use(CORS())
+
+	api := router.Group("/api")
 
 	ushttp.RegisterHTTPEndpoints(api, a.userUc)
 
@@ -89,6 +90,25 @@ func (a *App) Run(port string) error {
 
 }
 
+func initClient() (*mongo.Client, error) {
+	client, err := mongo.NewClient(options.Client().ApplyURI(viper.GetString("mongo.uri")))
+	if err != nil {
+		log.Fatalf("Error occured while establishing connection to mongoDB")
+		return nil, err
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	err = client.Connect(ctx)
+	if err != nil {
+		log.Fatal(err)
+		return nil, err
+	}
+
+	return client, nil
+}
+
 func initDB() *mongo.Database {
 	client, err := mongo.NewClient(options.Client().ApplyURI(viper.GetString("mongo.uri")))
 	if err != nil {
@@ -109,4 +129,19 @@ func initDB() *mongo.Database {
 	}
 
 	return client.Database(viper.GetString("mongo.name"))
+}
+
+func CORS() gin.HandlerFunc {
+	// TO allow CORS
+	return func(c *gin.Context) {
+		c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
+		c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, accept, origin, Cache-Control, X-Requested-With")
+		c.Writer.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS, GET, PUT, DELETE")
+		//c.Writer.Header().Set("ValidateHeaders","false")
+		if c.Request.Method == "OPTIONS" {
+			c.AbortWithStatus(204)
+			return
+		}
+		c.Next()
+	}
 }
