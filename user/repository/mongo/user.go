@@ -35,6 +35,53 @@ func NewUserRepository(databaseToStore *mongo.Client) *UserRepository {
 	}
 }
 
+func (r UserRepository) GetUserByEmailAndPassword(ctx context.Context, email, password string) (*models.User, error) {
+
+	var myArray []string
+
+	clientEncryption, err := utils.CreateClientEncryption(r.dbToStore)
+	if err != nil {
+		return nil, err
+	}
+
+	user := new(UserDTO)
+	err = r.dbToStore.Database("extensiondb").Collection("user_collection").FindOne(ctx, bson.M{
+		/*"email":    email,*/
+		"password": password,
+	}).Decode(user)
+
+	if err != nil {
+		return nil, err
+	}
+
+	decrypted, err := clientEncryption.Decrypt(context.TODO(), *user.Email)
+	if err != nil {
+		return nil, err
+	}
+
+	unquotedDecrypt, err := strconv.Unquote(decrypted.String())
+	if err != nil {
+		return nil, err
+	}
+
+	if user.PersonalData != nil {
+		for _, v := range user.PersonalData {
+			if v != nil {
+				decryptedVal, err := clientEncryption.Decrypt(context.TODO(), *v)
+				if err != nil {
+					return nil, err
+				}
+				unquoted, _ := strconv.Unquote(decryptedVal.String())
+				myArray = append(myArray, unquoted)
+			}
+		}
+	}
+
+	foundUser := toUser(unquotedDecrypt, myArray, user.Password, user.ID.Hex())
+
+	return foundUser, nil
+}
+
 func (r UserRepository) CreateUser(ctx context.Context, user *models.User) (err error) {
 
 	myrray := make([]*primitive.Binary, len(user.PersonalData))

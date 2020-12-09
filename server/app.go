@@ -1,6 +1,9 @@
 package server
 
 import (
+	"chrome-extension-back-end/auth"
+	authhttp "chrome-extension-back-end/auth/delivery/http"
+	authusecase "chrome-extension-back-end/auth/usecase"
 	"chrome-extension-back-end/user"
 	ushttp "chrome-extension-back-end/user/delivery/http"
 	userrepo "chrome-extension-back-end/user/repository/mongo"
@@ -8,12 +11,12 @@ import (
 	"context"
 	"fmt"
 	"github.com/gin-gonic/gin"
+	"net/http"
 	/*"github.com/itsjamie/gin-cors"*/
 	"github.com/spf13/viper"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 	"log"
-	"net/http"
 	"os"
 	"os/signal"
 	"time"
@@ -22,6 +25,7 @@ import (
 type App struct {
 	httpServer *http.Server
 	userUc     user.UseCase
+	authUC     auth.UseCase
 }
 
 func NewApp() *App {
@@ -33,10 +37,16 @@ func NewApp() *App {
 
 	fmt.Println("DATABASE SUCESSFULY CONECTED!", dbWithData)
 
-	benchRepo := userrepo.NewUserRepository(dbWithData)
+	userRepo := userrepo.NewUserRepository(dbWithData)
 
 	return &App{
-		userUc: userusecase.NewUserUseCase(benchRepo),
+		userUc: userusecase.NewUserUseCase(userRepo),
+		authUC: authusecase.NewAuthUseCase(
+			*userRepo,
+			viper.GetString("auth.hash_salt"),
+			[]byte(viper.GetString("auth.signing_key")),
+			viper.GetDuration("auth.token_ttl"),
+		),
 	}
 }
 
@@ -64,7 +74,11 @@ func (a *App) Run(port string) error {
 
 	router.Use(CORS())
 
-	api := router.Group("/api")
+	authhttp.RegisterHTTPEndpoints(router, a.authUC)
+
+	// API endpoints
+	authMiddleware := authhttp.NewAuthMiddleware(a.authUC)
+	api := router.Group("/api", authMiddleware)
 
 	ushttp.RegisterHTTPEndpoints(api, a.userUc)
 
