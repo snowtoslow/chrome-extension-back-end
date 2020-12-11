@@ -10,6 +10,7 @@ import (
 	userusecase "chrome-extension-back-end/user/usecase"
 	"chrome-extension-back-end/utils"
 	"context"
+	"crypto/tls"
 	"fmt"
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-contrib/sessions/cookie"
@@ -107,17 +108,25 @@ func (a *App) Run(port string) error {
 
 	ushttp.RegisterHTTPEndpoints(api, a.userUc)
 
+	cer, err := tls.LoadX509KeyPair("../../cert/server.crt", "../../cert/server.key")
+	if err != nil {
+		log.Println(err)
+	}
+	config := &tls.Config{Certificates: []tls.Certificate{cer}}
+
 	a.httpServer = &http.Server{
 		Addr:           ":" + port,
 		Handler:        router,
 		ReadTimeout:    10 * time.Second,
 		WriteTimeout:   10 * time.Second,
 		MaxHeaderBytes: 1 << 20,
+		TLSConfig:      config,
 	}
 
 	go func() {
-		if err := a.httpServer.ListenAndServe(); err != nil {
-			log.Fatalf("Failed to listen and serve")
+		if err := a.httpServer.ListenAndServeTLS("../../cert/server.crt", "../../cert/server.key"); err != nil {
+			log.Fatalf("Failed to listen and serve:", err)
+			//":8080", "https-server.crt", "https-server.key", nil
 		}
 	}()
 
