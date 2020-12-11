@@ -8,15 +8,18 @@ import (
 	ushttp "chrome-extension-back-end/user/delivery/http"
 	userrepo "chrome-extension-back-end/user/repository/mongo"
 	userusecase "chrome-extension-back-end/user/usecase"
+	"chrome-extension-back-end/utils"
 	"context"
 	"fmt"
+	"github.com/gin-contrib/sessions"
+	"github.com/gin-contrib/sessions/cookie"
 	"github.com/gin-gonic/gin"
-	"net/http"
-	/*"github.com/itsjamie/gin-cors"*/
 	"github.com/spf13/viper"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
+	"io"
 	"log"
+	"net/http"
 	"os"
 	"os/signal"
 	"time"
@@ -51,28 +54,50 @@ func NewApp() *App {
 }
 
 func (a *App) Run(port string) error {
-	/*router := gin.Default()
-	router.Use(
-		gin.Recovery(),
-		gin.Logger(),
-	)*/
-
 	// Initialize a new Gin router
 	router := gin.New()
+	gin.ForceConsoleColor()
+	store := cookie.NewStore([]byte("secret"))
 
-	/*router.Use(cors.Middleware(cors.Config{
-		Origins:         "*",
-		Methods:         "GET, PUT, POST, DELETE",
-		RequestHeaders:  "Origin, Authorization, Content-Type", //		RequestHeaders: "Origin, Authorization, Content-Type",
-		ExposedHeaders:  "",
-		MaxAge:          50 * time.Second,
-		Credentials:     true,
-		ValidateHeaders: false,
+	sessions.Sessions("store", store)
+	generatedCsrfToken, err := utils.GenerateCsrfToken()
+	if err != nil {
+		log.Println(err)
+	}
 
-	}), gin.Recovery(),
-		gin.Logger())*/
+	log.Println("GENERATED TOKEN:", string(generatedCsrfToken))
 
-	router.Use(CORS())
+	//router.Use(sessions.Sessions("store",store)) //storage for session;
+
+	/*csrf.Middleware(csrf.Options{
+		Secret: "token123",
+		ErrorFunc: func(c *gin.Context) {
+			c.String(400, "CSRF token mismatch")
+			c.Abort()
+		},
+	})*/
+
+	router.Use(gin.LoggerWithFormatter(func(param gin.LogFormatterParams) string {
+
+		// your custom format
+		return fmt.Sprintf("%s - [%s] \"%s %s %s %d %s \"%s\" %s\"\n",
+			param.ClientIP,
+			param.TimeStamp.Format(time.RFC1123),
+			param.Method,
+			param.Path,
+			param.Request.Proto,
+			param.StatusCode,
+			param.Latency,
+			param.Request.UserAgent(),
+			param.ErrorMessage,
+		)
+	})) // add a required custom format of logging
+
+	if err := writeLogs(); err != nil {
+		log.Println("ERROR WHILE CREATE LOGGING FILE!")
+	}
+
+	router.Use(sessions.Sessions("store", store), cors())
 
 	authhttp.RegisterHTTPEndpoints(router, a.authUC)
 
@@ -127,29 +152,7 @@ func initClient() (*mongo.Client, error) {
 	return client, nil
 }
 
-func initDB() *mongo.Database {
-	client, err := mongo.NewClient(options.Client().ApplyURI(viper.GetString("mongo.uri")))
-	if err != nil {
-		log.Fatalf("Error occured while establishing connection to mongoDB")
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	err = client.Connect(ctx)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	err = client.Ping(context.Background(), nil)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	return client.Database(viper.GetString("mongo.name"))
-}
-
-func CORS() gin.HandlerFunc {
+func cors() gin.HandlerFunc {
 	// TO allow CORS
 	return func(c *gin.Context) {
 		c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
@@ -162,4 +165,19 @@ func CORS() gin.HandlerFunc {
 		}
 		c.Next()
 	}
+}
+
+// create a log file;
+func writeLogs() (err error) {
+	// Logging to a file.
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return err
+	}
+	f, err := os.Create(home + "/Desktop/" + "gin.log")
+	if err != nil {
+		return err
+	}
+	gin.DefaultWriter = io.MultiWriter(f)
+	return nil
 }

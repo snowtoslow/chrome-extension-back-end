@@ -2,7 +2,10 @@ package http
 
 import (
 	"chrome-extension-back-end/auth"
+	customErrVal "chrome-extension-back-end/auth"
+	"errors"
 	"github.com/gin-gonic/gin"
+	"github.com/go-playground/validator/v10"
 	"net/http"
 )
 
@@ -17,14 +20,21 @@ func NewHandler(useCase auth.UseCase) *Handler {
 }
 
 type signInput struct {
-	Email    string `json:"email"`
-	Password string `json:"password"`
+	Email    string `json:"email" validate:"email required"`
+	Password string `json:"password" validate:"min=8,max=32 required"`
 }
 
 func (h *Handler) SignUp(c *gin.Context) {
 	inp := new(signInput)
 
 	if err := c.BindJSON(inp); err != nil {
+
+		var verr validator.ValidationErrors
+		if errors.As(err, &verr) {
+			c.JSON(http.StatusBadRequest, gin.H{"errors": customErrVal.Simple(verr)})
+			return
+		}
+
 		c.AbortWithStatus(http.StatusBadRequest)
 		return
 	}
@@ -45,6 +55,13 @@ func (h *Handler) SignIn(c *gin.Context) {
 	inp := new(signInput)
 
 	if err := c.BindJSON(inp); err != nil {
+
+		var verr validator.ValidationErrors
+		if errors.As(err, &verr) {
+			c.JSON(http.StatusBadRequest, gin.H{"errors": customErrVal.Simple(verr)})
+			return
+		}
+
 		c.AbortWithStatus(http.StatusBadRequest)
 		return
 	}
