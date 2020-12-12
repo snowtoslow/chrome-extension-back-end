@@ -6,6 +6,7 @@ import (
 	"errors"
 	"github.com/gin-gonic/gin"
 	"github.com/go-playground/validator/v10"
+	csrf "github.com/utrack/gin-csrf"
 	"net/http"
 )
 
@@ -22,6 +23,14 @@ func NewHandler(useCase auth.UseCase) *Handler {
 type signInput struct {
 	Email    string `json:"email" validate:"email required"`
 	Password string `json:"password" validate:"min=8,max=32 required"`
+}
+
+type csrfToken struct {
+	CsrfToken string `json:"csrf_token"`
+}
+
+func (h *Handler) GetCsrfToken(c *gin.Context) {
+	c.JSON(http.StatusOK, csrfToken{CsrfToken: csrf.GetToken(c)})
 }
 
 func (h *Handler) SignUp(c *gin.Context) {

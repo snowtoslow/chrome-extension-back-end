@@ -8,7 +8,6 @@ import (
 	ushttp "chrome-extension-back-end/user/delivery/http"
 	userrepo "chrome-extension-back-end/user/repository/mongo"
 	userusecase "chrome-extension-back-end/user/usecase"
-	"chrome-extension-back-end/utils"
 	"context"
 	"crypto/tls"
 	"fmt"
@@ -16,6 +15,7 @@ import (
 	"github.com/gin-contrib/sessions/cookie"
 	"github.com/gin-gonic/gin"
 	"github.com/spf13/viper"
+	csrf "github.com/utrack/gin-csrf"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 	"io"
@@ -58,29 +58,10 @@ func (a *App) Run(port string) error {
 	// Initialize a new Gin router
 	router := gin.New()
 	gin.ForceConsoleColor()
+
 	store := cookie.NewStore([]byte("secret"))
 
-	sessions.Sessions("store", store)
-	generatedCsrfToken, err := utils.GenerateCsrfToken()
-	if err != nil {
-		log.Println(err)
-	}
-
-	log.Println("GENERATED TOKEN:", string(generatedCsrfToken))
-
-	//router.Use(sessions.Sessions("store",store)) //storage for session;
-
-	/*csrf.Middleware(csrf.Options{
-		Secret: "token123",
-		ErrorFunc: func(c *gin.Context) {
-			c.String(400, "CSRF token mismatch")
-			c.Abort()
-		},
-	})*/
-
 	router.Use(gin.LoggerWithFormatter(func(param gin.LogFormatterParams) string {
-
-		// your custom format
 		return fmt.Sprintf("%s - [%s] \"%s %s %s %d %s \"%s\" %s\"\n",
 			param.ClientIP,
 			param.TimeStamp.Format(time.RFC1123),
@@ -98,7 +79,13 @@ func (a *App) Run(port string) error {
 		log.Println("ERROR WHILE CREATE LOGGING FILE!")
 	}
 
-	router.Use(sessions.Sessions("store", store), cors())
+	router.Use(sessions.Sessions("store", store), cors(), csrf.Middleware(csrf.Options{
+		Secret: "token123",
+		ErrorFunc: func(c *gin.Context) {
+			c.String(400, "CSRF token mismatch")
+			c.Abort()
+		},
+	}))
 
 	authhttp.RegisterHTTPEndpoints(router, a.authUC)
 
@@ -126,7 +113,6 @@ func (a *App) Run(port string) error {
 	go func() {
 		if err := a.httpServer.ListenAndServeTLS("../../cert/server.crt", "../../cert/server.key"); err != nil {
 			log.Fatalf("Failed to listen and serve:", err)
-			//":8080", "https-server.crt", "https-server.key", nil
 		}
 	}()
 

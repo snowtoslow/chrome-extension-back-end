@@ -2,7 +2,6 @@ package utils
 
 import (
 	"context"
-	"crypto/rand"
 	"encoding/base64"
 	"github.com/spf13/viper"
 	"go.mongodb.org/mongo-driver/bson"
@@ -136,14 +135,4 @@ func DecryptField(value *primitive.Binary, client *mongo.Client) (string, error)
 	}
 
 	return decrypted.String(), err
-}
-
-func GenerateCsrfToken() ([]byte, error) {
-	key := make([]byte, 32)
-	_, err := rand.Read(key)
-	if err != nil {
-		return nil, err
-	}
-
-	return key, err
 }
