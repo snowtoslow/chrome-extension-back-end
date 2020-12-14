@@ -27,3 +27,7 @@ func (u *UserUseCase) GetUserByEmailAndPassword(ctx context.Context, email, pass
 func (u *UserUseCase) GetUserById(ctx context.Context, id string) (user *models.User, err error) {
 	return u.userRepository.GetUserById(ctx, id)
 }
+
+func (u *UserUseCase) UpdateUser(ctx context.Context, dto *models.PatchDTO) (err error) {
+	return u.userRepository.UpdateUser(ctx, dto)
+}

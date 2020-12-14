@@ -5,10 +5,12 @@ import (
 	"chrome-extension-back-end/models"
 	"chrome-extension-back-end/utils"
 	"context"
+	"fmt"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
+	"log"
 	"strconv"
 )
 
@@ -184,6 +186,22 @@ func (r UserRepository) GetUserById(ctx context.Context, id string) (user *model
 	foundUser := toUser(unquotedDecrypt, myArray, myUser.Email, myUser.ID.Hex())
 
 	return foundUser, nil
+}
+
+func (r UserRepository) UpdateUser(ctx context.Context, dto *models.PatchDTO) (err error) {
+	result, err := r.dbToStore.Database("extensiondb").Collection("user_collection").UpdateOne(
+		ctx,
+		bson.M{"email": dto.Email},
+		bson.D{
+			{"$set", bson.D{{"personalData", dto.PersonalData}}},
+		},
+	)
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Printf("Updated %v Documents!\n", result)
+
+	return nil
 }
 
 func toMongoUser(u *models.User) *User {

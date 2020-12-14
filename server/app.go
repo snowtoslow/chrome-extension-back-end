@@ -39,8 +39,6 @@ func NewApp() *App {
 		log.Println(err)
 	}
 
-	fmt.Println("DATABASE SUCESSFULY CONECTED!", dbWithData)
-
 	userRepo := userrepo.NewUserRepository(dbWithData)
 
 	return &App{
@@ -73,7 +71,7 @@ func (a *App) Run(port string) error {
 			param.Request.UserAgent(),
 			param.ErrorMessage,
 		)
-	})) // add a required custom format of logging
+	})) /// add a required custom format of logging
 
 	if err := writeLogs(); err != nil {
 		log.Println("ERROR WHILE CREATE LOGGING FILE!")
@@ -95,11 +93,14 @@ func (a *App) Run(port string) error {
 
 	ushttp.RegisterHTTPEndpoints(api, a.userUc)
 
-	cer, err := tls.LoadX509KeyPair("../../cert/server.crt", "../../cert/server.key")
+	certsServer, err := tls.LoadX509KeyPair("../../cert/localhost.crt", "../../cert/localhost.key")
 	if err != nil {
 		log.Println(err)
 	}
-	config := &tls.Config{Certificates: []tls.Certificate{cer}}
+
+	config := &tls.Config{
+		Certificates: []tls.Certificate{certsServer},
+	}
 
 	a.httpServer = &http.Server{
 		Addr:           ":" + port,
@@ -111,8 +112,8 @@ func (a *App) Run(port string) error {
 	}
 
 	go func() {
-		if err := a.httpServer.ListenAndServeTLS("../../cert/server.crt", "../../cert/server.key"); err != nil {
-			log.Fatalf("Failed to listen and serve:", err)
+		if err := a.httpServer.ListenAndServeTLS("../../cert/localhost.crt", "../../cert/localhost.key"); err != nil {
+			log.Fatalf("Failed to listen and serve:")
 		}
 	}()
 
@@ -152,8 +153,7 @@ func cors() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
 		c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, accept, origin, Cache-Control, X-Requested-With")
-		c.Writer.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS, GET, PUT, DELETE")
-		//c.Writer.Header().Set("ValidateHeaders","false")
+		c.Writer.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS, GET, PUT, DELETE, PATCH")
 		if c.Request.Method == "OPTIONS" {
 			c.AbortWithStatus(204)
 			return

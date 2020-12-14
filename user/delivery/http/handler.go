@@ -18,6 +18,23 @@ func NewHandler(usecase user.UseCase) *Handler {
 	}
 }
 
+func (h Handler) UpdateData(c *gin.Context) {
+
+	var dto *models.PatchDTO
+
+	if err := c.ShouldBind(&dto); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"msg": err})
+		return
+	}
+
+	err := h.useCase.UpdateUser(c.Request.Context(), dto)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"msg": err})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"DTO": dto})
+}
+
 func (h Handler) CreateUser(c *gin.Context) {
 	var createdUser *models.User
 	if err := c.ShouldBindJSON(&createdUser); err != nil {

@@ -10,3 +10,8 @@ mongo-secured-keys:
   key_vault_db_name: "encryption"
   key_vault_collection_name: "testKeyVault"
   local_master_key: "rIkvosH58fbF5XdNct9lT8l4hk89MCZj1Lo1scTHHXoCm05YNs2Lu4bpkwlDD/8rLN70VfaVhD4BYtMjK+l+CK8BL8gIa8MEJud0GmkgnTj3p/e/wnJgaK/bqAJAejyh"
+
+auth:
+  hash_salt: "hash_salt"
+  signing_key: "signing_key"
+  token_ttl: 86400
