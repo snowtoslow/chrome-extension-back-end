@@ -18,7 +18,6 @@ require (
 	github.com/spf13/viper v1.7.1
 	github.com/ugorji/go v1.2.1 // indirect
 	github.com/utrack/gin-csrf v0.0.0-20190424104817-40fb8d2c8fca
-	//github.com/utrack/gin-csrf v0.0.0-20190424104817-40fb8d2c8fca
 	go.mongodb.org/mongo-driver v1.4.4
 	golang.org/x/crypto v0.0.0-20201203163018-be400aefbc4c // indirect
 	golang.org/x/sys v0.0.0-20201204225414-ed752295db88 // indirect
