@@ -204,23 +204,6 @@ func (r UserRepository) UpdateUser(ctx context.Context, dto *models.PatchDTO) (e
 	return nil
 }
 
-func toMongoUser(u *models.User) *User {
-	return &User{
-		Email:        u.Email,
-		Password:     u.Password,
-		PersonalData: u.PersonalData,
-	}
-}
-
-func toModel(u *User) *models.User {
-	return &models.User{
-		Id:           u.ID.Hex(),
-		Email:        u.Email,
-		Password:     u.Password,
-		PersonalData: u.PersonalData,
-	}
-}
-
 func toUser(email string, myPersonalData []string, password string, id string) *models.User {
 	return &models.User{
 		Id:           id,

@@ -11,7 +11,7 @@ func Init() error {
 	viper.SetConfigType("yaml")
 
 	// specify where the config file is
-	viper.SetConfigFile("/home/snowtoslow/go/src/chrome-extension-back-end/config/config.yml") // or viper.SetConfigFile("config/config"), doesn't matter
+	viper.SetConfigFile("config/config.yml") // or viper.SetConfigFile("config/config"), doesn't matter
 
 	// read in config file and check your errors
 	if err := viper.ReadInConfig(); err != nil {

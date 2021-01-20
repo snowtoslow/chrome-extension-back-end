@@ -93,7 +93,7 @@ func (a *App) Run(port string) error {
 
 	ushttp.RegisterHTTPEndpoints(api, a.userUc)
 
-	certsServer, err := tls.LoadX509KeyPair("../../cert/localhost.crt", "../../cert/localhost.key")
+	certsServer, err := tls.LoadX509KeyPair("cert/localhost.crt", "cert/localhost.key")
 	if err != nil {
 		log.Println(err)
 	}
@@ -112,7 +112,7 @@ func (a *App) Run(port string) error {
 	}
 
 	go func() {
-		if err := a.httpServer.ListenAndServeTLS("../../cert/localhost.crt", "../../cert/localhost.key"); err != nil {
+		if err := a.httpServer.ListenAndServeTLS("cert/localhost.crt", "cert/localhost.key"); err != nil {
 			log.Fatalf("Failed to listen and serve:")
 		}
 	}()
